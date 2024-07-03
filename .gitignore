@@ -1,6 +1,22 @@
-# If you prefer the allow list template instead of the deny list, see community template:
-# https://github.com/github/gitignore/blob/main/community/Golang/Go.AllowList.gitignore
-#
+# Frontend
+# Dependency directories
+node_modules/
+
+# IDE related
+.idea
+
+# Test coverage
+coverage
+*.lcov
+
+# Optional eslint cache
+.eslintcache
+
+# dotenv environment variables file
+.env
+.env.test
+
+# Backend
 # Binaries for programs and plugins
 *.exe
 *.exe~
