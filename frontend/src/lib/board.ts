@@ -5,6 +5,10 @@ export enum EBoardAction {
     Text
 };
     
+let snapshot: ImageData;
+
+let startX = 0
+let startY = 0;
 let drawing = false;
 let action = EBoardAction.Pencil;
 
@@ -15,12 +19,18 @@ export function initializeBoard() {
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
     
-    canvas.width = canvas.offsetWidth;
-    canvas.height = canvas.offsetHeight;
+    const canvasRect = canvas.getBoundingClientRect();
+    canvas.width = canvasRect.width;
+    canvas.height = canvasRect.height;
     
-    const startDrawing = () => {
+    const startDrawing = (e: MouseEvent) => {
         drawing = true;
+        startX = e.offsetX;
+        startY = e.offsetY;
+
         ctx.beginPath();
+
+        snapshot = ctx.getImageData(0, 0, canvas.width, canvas.height);
     };
     
     const stopDrawing = () => {
@@ -34,12 +44,15 @@ export function initializeBoard() {
     
     const draw = (e: MouseEvent) => {
         if (!drawing) return;
+        ctx.putImageData(snapshot, 0, 0);
 
         switch (action) {
             case EBoardAction.Pencil:
                 drawLine(e);
-            break;
+                break;
             case EBoardAction.Rectangle:
+                drawRectangle(e);
+                break;
             case EBoardAction.Line:
             case EBoardAction.Text:
                 return;
@@ -51,10 +64,14 @@ export function initializeBoard() {
         ctx.stroke();
     };
     
+    const drawRectangle = (e: MouseEvent) => {
+        ctx.strokeRect(e.offsetX, e.offsetY, startX - e.offsetX, startY - e.offsetY);
+    }
+    
     canvas.addEventListener("mousedown", startDrawing);
     canvas.addEventListener("mouseenter", handleMouseEnter);
     canvas.addEventListener("mousemove", draw);
-    canvas.addEventListener("mouseleave", drawLine);
+    canvas.addEventListener("mouseleave", draw);
     document.addEventListener("mouseup", stopDrawing);
 }
 
