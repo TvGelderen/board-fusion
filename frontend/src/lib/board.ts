@@ -1,37 +1,63 @@
-export enum EBoardAction {
+import rough from 'roughjs';
+import type { Drawable } from 'roughjs/bin/core';
+
+export enum EAction {
     Drag,
+    Draw
+};
+
+export enum ETool {
     Pencil,
     Rectangle,
-    Line,
-    Text
-};
-    
-let snapshot: ImageData;
+    Line
+}
 
-let startX = 0
+type Coordinates = {
+    x: number;
+    y: number;
+}
+
+type Element = {
+    coords1: Coordinates;
+    coords2: Coordinates;
+    element: Drawable;
+}
+
+const generator = rough.generator();
+    
+let startX = 0;
 let startY = 0;
 let drawing = false;
-let action = EBoardAction.Drag;
+let action = EAction.Draw;
+let tool = ETool.Line;
+const elements: Element[] = [];
 
 export function initializeBoard() {
     const canvas = document.querySelector("canvas");
     if (!canvas) return;
 
-    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    const ctx = canvas.getContext("2d");
     if (!ctx) return;
-    
+
     const canvasRect = canvas.getBoundingClientRect();
     canvas.width = canvasRect.width;
     canvas.height = canvasRect.height;
     
+    const rc = rough.canvas(canvas);
+
     const startDrawing = (e: MouseEvent) => {
+        if (action == EAction.Drag) {
+            return;
+        }
+
         drawing = true;
         startX = e.offsetX;
         startY = e.offsetY;
 
-        ctx.beginPath();
+        const element = createElement(startX, startY, e.offsetX, e.offsetY);
+        if (!element) return;
 
-        snapshot = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        elements.push(element);
     };
     
     const stopDrawing = () => {
@@ -40,47 +66,21 @@ export function initializeBoard() {
 
     const handleMouseEnter = () => {
         if (!drawing) return;
-        ctx.beginPath();
     };
     
     const draw = (e: MouseEvent) => {
         if (!drawing) return;
 
-        ctx.putImageData(snapshot, 0, 0);
+        const element = createElement(startX, startY, e.offsetX, e.offsetY);
+        if (!element) return;
 
-        switch (action) {
-            case EBoardAction.Drag:
-                return;
-            case EBoardAction.Pencil:
-                drawPencil(e);
-                break;
-            case EBoardAction.Rectangle:
-                drawRectangle(e);
-                break;
-            case EBoardAction.Line:
-                drawLine(e);
-                break;
-            case EBoardAction.Text:
-                return;
-        }
+        elements[elements.length - 1] = element;
+
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        elements.forEach(el => rc.draw(el.element));
     }
-    
-    const drawPencil = (e: MouseEvent) => {
-        ctx.lineTo(e.offsetX, e.offsetY);
-        ctx.stroke();
-    };
-    
-    const drawRectangle = (e: MouseEvent) => {
-        ctx.strokeRect(e.offsetX, e.offsetY, startX - e.offsetX, startY - e.offsetY);
-    }
-    
-    const drawLine = (e: MouseEvent) => {
-        ctx.beginPath();
-        ctx.moveTo(startX, startY);
-        ctx.lineTo(e.offsetX, e.offsetY);
-        ctx.stroke();
-    }
-    
+
     canvas.addEventListener("mousedown", startDrawing);
     canvas.addEventListener("mouseenter", handleMouseEnter);
     canvas.addEventListener("mousemove", draw);
@@ -88,4 +88,29 @@ export function initializeBoard() {
     document.addEventListener("mouseup", stopDrawing);
 }
 
-export const updateAction = (value: EBoardAction) => action = value;
+function createElement(x1: number, y1: number, x2: number, y2: number): Element | null {
+    let element: Drawable | null = null;
+
+    switch (tool) {
+        case ETool.Pencil:
+            break;
+        case ETool.Rectangle:
+            element = generator.rectangle(x1, y1, x2-x1, y2-y1);
+            break;
+        case ETool.Line:
+            element = generator.line(x1, y1, x2, y2);
+            break;
+    }
+
+    return element == null ? 
+        null :
+        {
+            coords1: {x: x1, y: y1},
+            coords2: {x: x2, y: y2},
+            element: element
+        };
+}
+
+export const updateAction = (value: EAction) => action = value;
+
+export const updateTool = (value: ETool) => tool = value;
