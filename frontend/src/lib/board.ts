@@ -14,6 +14,17 @@ export enum ETool {
     Circle
 }
 
+enum ECorner {
+    TopLeft = 0,
+    TopMiddle = 1,
+    TopRight = 2,
+    MiddleRight = 3,
+    BottomRight = 4,
+    BottomMiddle = 5,
+    BottomLeft = 6,
+    MiddleLeft = 7,
+}
+
 type Coordinates = {
     x: number;
     y: number;
@@ -34,11 +45,13 @@ let startX = 0;
 let startY = 0;
 let drawing = false;
 let dragging = false;
+let resizing = false;
 let action = EAction.Draw;
 let tool = ETool.Pencil;
+let resizeCorner: ECorner | null = null;
 let selectedElement: Element | null = null;
 let selectedElementBox: {
-    box: Element;
+    box: Element | null;
     resizeBalls: Element[];
 } | null = null;
 const elements: Element[] = [];
@@ -70,6 +83,17 @@ export function initializeBoard() {
 
     const handleMouseDown = (e: MouseEvent) => {
         if (action === EAction.Drag) {
+            const element = getElementAtPosition(e.offsetX, e.offsetY);
+            if (!element) return;
+
+            selectedElement = element;
+
+            const corner = getResizeBallAtPosition(e.offsetX, e.offsetY);
+            if (corner != -1) {
+                startResizing(e, corner);
+                return;
+            }
+
             startDragging(e);
             return;
         }
@@ -78,7 +102,12 @@ export function initializeBoard() {
 
     const handleMouseUp = () => {
         if (action === EAction.Drag) {
+            if (resizing) {
+                resizing = false;
+                resizeCorner = null;
+            }
             stopDragging();
+            canvas.style.cursor = "default";
             return;
         }
         stopDrawing();
@@ -86,45 +115,55 @@ export function initializeBoard() {
 
     const handleMouseMove = (e: MouseEvent) => {
         if (action === EAction.Drag) {
-            const element = getElementAtPosition(e.offsetX, e.offsetY);
-            if (!element) {
-                if (selectedElement) {
-                    selectedElement = null;
-                    selectedElementBox = null;
-                    rerender();
-                }
-                canvas.style.cursor = "default";
+            if (dragging) {
+                drag(e);
+                return;
+            }
+            if (resizing) {
+                resize(e);
                 return;
             }
 
-            switch (getResizeBallAtPosition(e.offsetX, e.offsetY)) {
-                case 0:
-                case 4:
-                    canvas.style.cursor = "nwse-resize";
-                    break;
-                case 1: 
-                case 5:
-                    canvas.style.cursor = "ns-resize";
-                    break;
-                case 2:
-                case 6:
-                    canvas.style.cursor = "nesw-resize";
-                    break;
-                case 3:
-                case 7:
-                    canvas.style.cursor = "ew-resize";
-                    break;
-                default:
-                    canvas.style.cursor = "move";
-            }
-
-            if (!dragging && selectedElement?.idx !== element.idx) {
+            const element = getElementAtPosition(e.offsetX, e.offsetY);
+            if (selectedElement?.idx !== element?.idx) {
                 selectedElement = element;
+                selectedElementBox = null;
                 updateSelectedElementBox();
                 rerender();
             }
 
-            drag(e);
+            if (!selectedElement) return;
+            const resizeBall = getResizeBallAtPosition(e.offsetX, e.offsetY);
+            if (selectedElement.type == ETool.Rectangle) {
+                switch (resizeBall) {
+                    case ECorner.TopLeft:
+                    case ECorner.BottomRight:
+                        canvas.style.cursor = "nwse-resize";
+                        break;
+                    case ECorner.TopMiddle:
+                    case ECorner.BottomMiddle:
+                        canvas.style.cursor = "ns-resize";
+                        break;
+                    case ECorner.TopRight:
+                    case ECorner.BottomLeft:
+                        canvas.style.cursor = "nesw-resize";
+                        break;
+                    case ECorner.MiddleRight:
+                    case ECorner.MiddleLeft:
+                        canvas.style.cursor = "ew-resize";
+                        break;
+                    default:
+                        canvas.style.cursor = "move";
+                }
+            } else if (selectedElement.type == ETool.Line) {
+                if (resizeBall === -1) {
+                    canvas.style.cursor = "move";
+                    return;
+                }
+
+                canvas.style.cursor = "pointer";
+            }
+
             return;
         }
 
@@ -154,13 +193,16 @@ export function initializeBoard() {
     };
 
     const startDragging = (e: MouseEvent) => {
-        const element = getElementAtPosition(e.offsetX, e.offsetY);
-        if (!element) return;
-
         dragging = true;
         startX = e.clientX;
         startY = e.clientY;
-        selectedElement = element;
+    }
+
+    const startResizing = (e: MouseEvent, corner: ECorner) => {
+        resizing = true;
+        resizeCorner = corner;
+        startX = e.clientX;
+        startY = e.clientY;
     }
 
     const stopDrawing = () => {
@@ -213,11 +255,43 @@ export function initializeBoard() {
         rerender();
     }
 
+    const resize = (e: MouseEvent) => {
+        if (!resizing || !selectedElement) return;
+
+        if (selectedElement.type === ETool.Rectangle) {
+            switch (resizeCorner) {
+                case ECorner.TopLeft:
+                case ECorner.BottomRight:
+                    break;
+                case ECorner.TopMiddle:
+                case ECorner.BottomMiddle:
+                    break;
+                case ECorner.TopRight:
+                case ECorner.BottomLeft:
+                    break;
+                case ECorner.MiddleRight:
+                case ECorner.MiddleLeft:
+                    break;
+            }
+        } else if (selectedElement.type === ETool.Line) {
+            if (Math.abs(distance(elements[selectedElement.idx].coords1, { x: e.offsetX, y: e.offsetY })) < 
+                Math.abs(distance(elements[selectedElement.idx].coords2, { x: e.offsetX, y: e.offsetY }))) {
+                updateElement(selectedElement.idx, e.offsetX, e.offsetY, selectedElement.coords2.x, selectedElement.coords2.y);
+            } else {
+                updateElement(selectedElement.idx, selectedElement.coords1.x, selectedElement.coords1.y, e.offsetX, e.offsetY);
+            }
+        }
+
+        rerender();
+    }
+
     const rerender = () => {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-        if (selectedElementBox?.box.element) {
-            rc.draw(selectedElementBox.box.element);
+        if (selectedElementBox) {
+            if (selectedElementBox.box?.element) {
+                rc.draw(selectedElementBox.box.element);
+            }
             selectedElementBox.resizeBalls.forEach(ball => {
                 if (ball.element) {
                     rc.draw(ball.element)
@@ -257,14 +331,13 @@ function createElement(idx: number, x1: number, y1: number, x2: number, y2: numb
             if (x1 > x2) {
                 [x1, x2] = [x2, x1];
             }
+            if (y1 > y2) {
+                [y1, y2] = [y2, y1];
+            }
             break;
         case ETool.Circle:
-            element = generator.circle(x1, y1, resizeBallDiameter);
+            element = generator.circle(x1, y1, resizeBallDiameter, { fill: "white", fillWeight: 10 });
             break;
-    }
-
-    if (y1 > y2) {
-        [y1, y2] = [y2, y1];
     }
 
     return {
@@ -277,6 +350,9 @@ function createElement(idx: number, x1: number, y1: number, x2: number, y2: numb
     };
 }
 
+function resizeElement(idx: number, corner: ECorner) {
+}
+
 function updateElement(idx: number, x1: number, y1: number, x2: number, y2: number) {
     elements[idx] = createElement(idx, x1, y1, x2, y2, elements[idx].type);
     updateSelectedElementBox();
@@ -286,13 +362,21 @@ function updateSelectedElementBox() {
     if (!selectedElement) return;
 
     const { coords1, coords2 } = elements[selectedElement.idx];
-    const x1 = coords1.x - selectedBoxPadding;
-    const y1 = coords1.y - selectedBoxPadding;
-    const x2 = coords2.x + selectedBoxPadding;
-    const y2 = coords2.y + selectedBoxPadding;
-    const corners: Coordinates[] = [{ x: x1, y: y1 }, { x: average(x1, x2), y: y1 }, { x: x2, y: y1 }, { x: x2, y: average(y1, y2) }, { x: x2, y: y2 }, { x: average(x1, x2), y: y2 }, { x: x1, y: y2 }, { x: x1, y: average(y1, y2) }];
 
-    const box = createElement(elements.length, x1, y1, x2, y2, ETool.Rectangle, 1);
+    let corners: Coordinates[] = [];
+    let box: Element | null = null;
+
+    if (selectedElement.type === ETool.Rectangle) {
+        const x1 = coords1.x - selectedBoxPadding;
+        const y1 = coords1.y - selectedBoxPadding;
+        const x2 = coords2.x + selectedBoxPadding;
+        const y2 = coords2.y + selectedBoxPadding;
+        corners = [{ x: x1, y: y1 }, { x: average(x1, x2), y: y1 }, { x: x2, y: y1 }, { x: x2, y: average(y1, y2) }, { x: x2, y: y2 }, { x: average(x1, x2), y: y2 }, { x: x1, y: y2 }, { x: x1, y: average(y1, y2) }];
+        box = createElement(elements.length, x1, y1, x2, y2, ETool.Rectangle, 1);
+    } else if (selectedElement.type === ETool.Line) {
+        corners = [{ x: coords1.x, y: coords1.y }, { x: coords2.x, y: coords2.y }];
+    }
+
     const resizeBalls = corners.map((coords, index) => createElement(index, coords.x, coords.y, coords.x, coords.y, ETool.Circle, 1));
 
     selectedElementBox = { box, resizeBalls }
@@ -304,11 +388,11 @@ function getElementAtPosition(x: number, y: number) {
         if (withinElement(x, y, element)) {
             return true;
         }
-    });
+    }) ?? null;
 }
 
 function getResizeBallAtPosition(x: number, y: number) {
-    if (!selectedElementBox) return;
+    if (!selectedElementBox) return -1;
     return selectedElementBox.resizeBalls.findIndex((element: Element) => {
         if (withinElement(x, y, element)) {
             return true;
@@ -327,9 +411,9 @@ function withinElement(x: number, y: number, element: Element) {
             return Math.abs(offset(element.coords1, element.coords2, { x: x, y: y })) < selectedBoxPadding;
         case ETool.Circle:
             return x >= element.coords1.x - resizeBallDiameter &&
-                   x <= element.coords1.x + resizeBallDiameter &&
-                   y >= element.coords1.y - resizeBallDiameter &&
-                   y <= element.coords1.y + resizeBallDiameter;
+                x <= element.coords1.x + resizeBallDiameter &&
+                y >= element.coords1.y - resizeBallDiameter &&
+                y <= element.coords1.y + resizeBallDiameter;
     }
 
     return false;
