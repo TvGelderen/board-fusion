@@ -36,7 +36,9 @@ let dragging = false;
 let action = EAction.Draw;
 let tool = ETool.Pencil;
 let selectedElement: Element | null = null;
+let selectedElementBox: Element | null = null;
 const elements: Element[] = [];
+const selectedBoxPadding = 10;
 
 export const updateAction = (value: EAction) => action = value;
 
@@ -78,7 +80,24 @@ export function initializeBoard() {
 
     const handleMouseMove = (e: MouseEvent) => {
         if (action === EAction.Drag) {
-            canvas.style.cursor = getElementAtPosition(e.offsetX, e.offsetY) ? "move" : "default";
+            const element = getElementAtPosition(e.offsetX, e.offsetY);
+            if (!element) {
+                if (selectedElement) {
+                    selectedElement = null;
+                    selectedElementBox = null;
+                    rerender();
+                }
+                canvas.style.cursor = "default";
+                return;
+            }
+            canvas.style.cursor = "move";
+
+            if (!dragging && selectedElement?.idx !== element.idx) {
+                selectedElement = element;
+                updateSelectedElementBox();
+                rerender();
+            }
+
             drag(e);
             return;
         }
@@ -170,6 +189,10 @@ export function initializeBoard() {
     const rerender = () => {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 
+        if (selectedElementBox?.element) {
+            rc.draw(selectedElementBox.element);
+        }
+
         elements.forEach(el => {
             if (el.element) {
                 rc.draw(el.element);
@@ -190,25 +213,24 @@ export function initializeBoard() {
     document.addEventListener("mouseup", handleMouseUp);
 }
 
-function createElement(idx: number, x1: number, y1: number, x2: number, y2: number, type: ETool) {
+function createElement(idx: number, x1: number, y1: number, x2: number, y2: number, type: ETool, strokeWidth: number = 3) {
     let element: Drawable | null = null;
 
     switch (type) {
         case ETool.Rectangle:
-            element = generator.rectangle(x1, y1, x2 - x1, y2 - y1, { strokeWidth: 3 });
+            element = generator.rectangle(x1, y1, x2 - x1, y2 - y1, { strokeWidth });
             if (x1 > x2) {
                 [x1, x2] = [x2, x1];
             }
             break;
         case ETool.Line:
-            element = generator.line(x1, y1, x2, y2, { strokeWidth: 3 });
+            element = generator.line(x1, y1, x2, y2, { strokeWidth });
             break;
     }
 
     if (y1 > y2) {
         [y1, y2] = [y2, y1];
     }
-
 
     return {
         idx: idx,
@@ -222,6 +244,20 @@ function createElement(idx: number, x1: number, y1: number, x2: number, y2: numb
 
 function updateElement(idx: number, x1: number, y1: number, x2: number, y2: number) {
     elements[idx] = createElement(idx, x1, y1, x2, y2, elements[idx].type);
+    updateSelectedElementBox();
+}
+
+function updateSelectedElementBox() {
+    if (!selectedElement) return;
+
+    const { coords1, coords2 } = elements[selectedElement.idx];
+    const x1 = coords1.x - selectedBoxPadding;
+    const y1 = coords1.y - selectedBoxPadding;
+    const x2 = coords2.x + selectedBoxPadding;
+    const y2 = coords2.y + selectedBoxPadding;
+
+    const element = createElement(elements.length, x1, y1, x2, y2, ETool.Rectangle, 1);
+    selectedElementBox = element;
 }
 
 function getElementAtPosition(x: number, y: number) {
