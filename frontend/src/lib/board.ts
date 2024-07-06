@@ -35,10 +35,7 @@ let drawing = false;
 let dragging = false;
 let action = EAction.Draw;
 let tool = ETool.Pencil;
-let selectedElement: { 
-    element: Element;
-    offsetX: number;
-    offsetY: number } | null = null;
+let selectedElement: Element | null = null;
 const elements: Element[] = [];
 
 export const updateAction = (value: EAction) => action = value;
@@ -115,11 +112,9 @@ export function initializeBoard() {
         if (!element) return;
 
         dragging = true;
-        selectedElement = { 
-            element: element, 
-            offsetX: e.clientX - element.coords1.x,
-            offsetY: e.clientY - element.coords1.y
-        };
+        startX = e.clientX;
+        startY = e.clientY;
+        selectedElement = element;
     }
 
     const stopDrawing = () => {
@@ -155,14 +150,19 @@ export function initializeBoard() {
     const drag = (e: MouseEvent) => {
         if (!dragging || !selectedElement) return;
 
-        const { element, offsetX, offsetY } = selectedElement;
+        const { coords1, coords2 } = selectedElement;
 
-        const width = Math.abs(element.coords1.x - element.coords2.x);
-        const height = Math.abs(element.coords1.y - element.coords2.y);
-        const x = e.clientX - offsetX;
-        const y = e.clientY - offsetY;
+        const x1 = e.clientX - (startX - coords1.x);
+        const y1 = e.clientY - (startY - coords1.y);
+        let x2 = e.clientX - (startX - coords2.x);
+        let y2 = e.clientY - (startY - coords2.y);
 
-        updateElement(element.idx, x, y, x + width, y + height);
+        if (selectedElement.type === ETool.Rectangle) {
+            x2 = x1 + Math.abs(selectedElement.coords1.x - selectedElement.coords2.x);
+            y2 = y1 + Math.abs(selectedElement.coords1.y - selectedElement.coords2.y);
+        }
+
+        updateElement(selectedElement.idx, x1, y1, x2, y2);
 
         rerender();
     }
@@ -196,18 +196,19 @@ function createElement(idx: number, x1: number, y1: number, x2: number, y2: numb
     switch (type) {
         case ETool.Rectangle:
             element = generator.rectangle(x1, y1, x2 - x1, y2 - y1, { strokeWidth: 3 });
+            if (x1 > x2) {
+                [x1, x2] = [x2, x1];
+            }
             break;
         case ETool.Line:
-            element = generator.line(x1, y1, x2, y2);
+            element = generator.line(x1, y1, x2, y2, { strokeWidth: 3 });
             break;
     }
 
-    if (x1 > x2) {
-        [x1, x2] = [x2, x1];
-    }
     if (y1 > y2) {
         [y1, y2] = [y2, y1];
     }
+
 
     return {
         idx: idx,
@@ -235,10 +236,10 @@ function getElementAtPosition(x: number, y: number) {
 function withinElement(x: number, y: number, element: Element) {
     switch (element.type) {
         case ETool.Rectangle:
-            return x >= element.coords1.x && 
-                   x <= element.coords2.x && 
-                   y >= element.coords1.y && 
-                   y <= element.coords2.y;
+            return x >= element.coords1.x &&
+                x <= element.coords2.x &&
+                y >= element.coords1.y &&
+                y <= element.coords2.y;
         case ETool.Line:
             return Math.abs(offset(element.coords1, element.coords2, { x: x, y: y })) < 1;
     }
