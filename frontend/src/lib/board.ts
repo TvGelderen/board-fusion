@@ -8,9 +8,10 @@ export enum EAction {
 };
 
 export enum ETool {
+    Line,
     Pencil,
     Rectangle,
-    Line
+    Circle
 }
 
 type Coordinates = {
@@ -36,8 +37,13 @@ let dragging = false;
 let action = EAction.Draw;
 let tool = ETool.Pencil;
 let selectedElement: Element | null = null;
-let selectedElementBox: Element | null = null;
+let selectedElementBox: {
+    box: Element;
+    resizeBalls: Element[];
+} | null = null;
 const elements: Element[] = [];
+const resizeBallDiameter = 10;
+const selectedBoxMargin = 5;
 const selectedBoxPadding = 10;
 
 export const updateAction = (value: EAction) => action = value;
@@ -90,7 +96,27 @@ export function initializeBoard() {
                 canvas.style.cursor = "default";
                 return;
             }
-            canvas.style.cursor = "move";
+
+            switch (getResizeBallAtPosition(e.offsetX, e.offsetY)) {
+                case 0:
+                case 4:
+                    canvas.style.cursor = "nwse-resize";
+                    break;
+                case 1: 
+                case 5:
+                    canvas.style.cursor = "ns-resize";
+                    break;
+                case 2:
+                case 6:
+                    canvas.style.cursor = "nesw-resize";
+                    break;
+                case 3:
+                case 7:
+                    canvas.style.cursor = "ew-resize";
+                    break;
+                default:
+                    canvas.style.cursor = "move";
+            }
 
             if (!dragging && selectedElement?.idx !== element.idx) {
                 selectedElement = element;
@@ -101,6 +127,7 @@ export function initializeBoard() {
             drag(e);
             return;
         }
+
         draw(e);
     }
 
@@ -189,8 +216,13 @@ export function initializeBoard() {
     const rerender = () => {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-        if (selectedElementBox?.element) {
-            rc.draw(selectedElementBox.element);
+        if (selectedElementBox?.box.element) {
+            rc.draw(selectedElementBox.box.element);
+            selectedElementBox.resizeBalls.forEach(ball => {
+                if (ball.element) {
+                    rc.draw(ball.element)
+                }
+            });
         }
 
         elements.forEach(el => {
@@ -217,14 +249,17 @@ function createElement(idx: number, x1: number, y1: number, x2: number, y2: numb
     let element: Drawable | null = null;
 
     switch (type) {
+        case ETool.Line:
+            element = generator.line(x1, y1, x2, y2, { strokeWidth });
+            break;
         case ETool.Rectangle:
             element = generator.rectangle(x1, y1, x2 - x1, y2 - y1, { strokeWidth });
             if (x1 > x2) {
                 [x1, x2] = [x2, x1];
             }
             break;
-        case ETool.Line:
-            element = generator.line(x1, y1, x2, y2, { strokeWidth });
+        case ETool.Circle:
+            element = generator.circle(x1, y1, resizeBallDiameter);
             break;
     }
 
@@ -255,9 +290,12 @@ function updateSelectedElementBox() {
     const y1 = coords1.y - selectedBoxPadding;
     const x2 = coords2.x + selectedBoxPadding;
     const y2 = coords2.y + selectedBoxPadding;
+    const corners: Coordinates[] = [{ x: x1, y: y1 }, { x: average(x1, x2), y: y1 }, { x: x2, y: y1 }, { x: x2, y: average(y1, y2) }, { x: x2, y: y2 }, { x: average(x1, x2), y: y2 }, { x: x1, y: y2 }, { x: x1, y: average(y1, y2) }];
 
-    const element = createElement(elements.length, x1, y1, x2, y2, ETool.Rectangle, 1);
-    selectedElementBox = element;
+    const box = createElement(elements.length, x1, y1, x2, y2, ETool.Rectangle, 1);
+    const resizeBalls = corners.map((coords, index) => createElement(index, coords.x, coords.y, coords.x, coords.y, ETool.Circle, 1));
+
+    selectedElementBox = { box, resizeBalls }
 }
 
 function getElementAtPosition(x: number, y: number) {
@@ -269,15 +307,29 @@ function getElementAtPosition(x: number, y: number) {
     });
 }
 
+function getResizeBallAtPosition(x: number, y: number) {
+    if (!selectedElementBox) return;
+    return selectedElementBox.resizeBalls.findIndex((element: Element) => {
+        if (withinElement(x, y, element)) {
+            return true;
+        }
+    });
+}
+
 function withinElement(x: number, y: number, element: Element) {
     switch (element.type) {
         case ETool.Rectangle:
-            return x >= element.coords1.x &&
-                x <= element.coords2.x &&
-                y >= element.coords1.y &&
-                y <= element.coords2.y;
+            return x >= element.coords1.x - (selectedBoxPadding + selectedBoxMargin) &&
+                x <= element.coords2.x + (selectedBoxPadding + selectedBoxMargin) &&
+                y >= element.coords1.y - (selectedBoxPadding + selectedBoxMargin) &&
+                y <= element.coords2.y + (selectedBoxPadding + selectedBoxMargin);
         case ETool.Line:
-            return Math.abs(offset(element.coords1, element.coords2, { x: x, y: y })) < 1;
+            return Math.abs(offset(element.coords1, element.coords2, { x: x, y: y })) < selectedBoxPadding;
+        case ETool.Circle:
+            return x >= element.coords1.x - resizeBallDiameter &&
+                   x <= element.coords1.x + resizeBallDiameter &&
+                   y >= element.coords1.y - resizeBallDiameter &&
+                   y <= element.coords1.y + resizeBallDiameter;
     }
 
     return false;
