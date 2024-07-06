@@ -37,6 +37,7 @@
 	"type": "module",
 	"dependencies": {
 		"clsx": "^2.1.1",
+		"perfect-freehand": "^1.2.2",
 		"tailwind-merge": "^2.3.0",
 		"tailwind-variants": "^0.2.1"
 	}

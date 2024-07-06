@@ -1,3 +1,4 @@
+import getStroke from 'perfect-freehand';
 import rough from 'roughjs';
 import type { Drawable } from 'roughjs/bin/core';
 
@@ -18,19 +19,36 @@ type Coordinates = {
 }
 
 type Element = {
+    idx: number;
     coords1: Coordinates;
     coords2: Coordinates;
-    element: Drawable;
+    element: Drawable | null;
+    points: Coordinates[] | null;
+    type: ETool;
 }
 
 const generator = rough.generator();
-    
+
 let startX = 0;
 let startY = 0;
 let drawing = false;
+let dragging = false;
 let action = EAction.Draw;
-let tool = ETool.Line;
+let tool = ETool.Pencil;
+let selectedElement: { 
+    element: Element;
+    offsetX: number;
+    offsetY: number } | null = null;
 const elements: Element[] = [];
+
+export const updateAction = (value: EAction) => action = value;
+
+export const updateTool = (value: ETool) => {
+    if (action === EAction.Drag) {
+        updateAction(EAction.Draw);
+    }
+    tool = value;
+};
 
 export function initializeBoard() {
     const canvas = document.querySelector("canvas");
@@ -42,75 +60,219 @@ export function initializeBoard() {
     const canvasRect = canvas.getBoundingClientRect();
     canvas.width = canvasRect.width;
     canvas.height = canvasRect.height;
-    
+
     const rc = rough.canvas(canvas);
 
-    const startDrawing = (e: MouseEvent) => {
-        if (action == EAction.Drag) {
+    const handleMouseDown = (e: MouseEvent) => {
+        if (action === EAction.Drag) {
+            startDragging(e);
             return;
         }
-
-        drawing = true;
-        startX = e.offsetX;
-        startY = e.offsetY;
-
-        const element = createElement(startX, startY, e.offsetX, e.offsetY);
-        if (!element) return;
-
-        elements.push(element);
+        startDrawing(e);
     };
-    
-    const stopDrawing = () => {
-        drawing = false;
+
+    const handleMouseUp = () => {
+        if (action === EAction.Drag) {
+            stopDragging();
+            return;
+        }
+        stopDrawing();
     };
+
+    const handleMouseMove = (e: MouseEvent) => {
+        if (action === EAction.Drag) {
+            canvas.style.cursor = getElementAtPosition(e.offsetX, e.offsetY) ? "move" : "default";
+            drag(e);
+            return;
+        }
+        draw(e);
+    }
 
     const handleMouseEnter = () => {
         if (!drawing) return;
     };
-    
+
+    const handleMouseLeave = (e: MouseEvent) => {
+        if (action === EAction.Drag) {
+            return;
+        }
+        draw(e);
+    };
+
+    const startDrawing = (e: MouseEvent) => {
+        drawing = true;
+        startX = e.offsetX;
+        startY = e.offsetY;
+
+        const element = createElement(elements.length, startX, startY, startX, startY, tool);
+        if (!element) return;
+
+        elements.push(element);
+    };
+
+    const startDragging = (e: MouseEvent) => {
+        const element = getElementAtPosition(e.offsetX, e.offsetY);
+        if (!element) return;
+
+        dragging = true;
+        selectedElement = { 
+            element: element, 
+            offsetX: e.clientX - element.coords1.x,
+            offsetY: e.clientY - element.coords1.y
+        };
+    }
+
+    const stopDrawing = () => {
+        drawing = false;
+    };
+
+    const stopDragging = () => {
+        if (!dragging) return;
+
+        selectedElement = null;
+        dragging = false;
+    }
+
     const draw = (e: MouseEvent) => {
         if (!drawing) return;
 
-        const element = createElement(startX, startY, e.offsetX, e.offsetY);
-        if (!element) return;
+        const index = elements.length - 1;
+        if (tool === ETool.Pencil) {
+            if (!elements[index].points) {
+                elements[index].points = [];
+            }
+            elements[index].points.push({ x: e.offsetX, y: e.offsetY });
+        } else {
+            const element = createElement(index, startX, startY, e.offsetX, e.offsetY, tool);
+            if (!element) return;
 
-        elements[elements.length - 1] = element;
+            elements[index] = element;
+        }
 
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-        elements.forEach(el => rc.draw(el.element));
+        rerender();
     }
 
-    canvas.addEventListener("mousedown", startDrawing);
+    const drag = (e: MouseEvent) => {
+        if (!dragging || !selectedElement) return;
+
+        const { element, offsetX, offsetY } = selectedElement;
+
+        const width = Math.abs(element.coords1.x - element.coords2.x);
+        const height = Math.abs(element.coords1.y - element.coords2.y);
+        const x = e.clientX - offsetX;
+        const y = e.clientY - offsetY;
+
+        updateElement(element.idx, x, y, x + width, y + height);
+
+        rerender();
+    }
+
+    const rerender = () => {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        elements.forEach(el => {
+            if (el.element) {
+                rc.draw(el.element);
+            } else if (el.points) {
+                const stroke = getStroke(el.points);
+                const pathData = getSvgPathFromStroke(stroke);
+                const path = new Path2D(pathData);
+                ctx.fill(path);
+                return;
+            }
+        });
+    }
+
+    canvas.addEventListener("mousedown", handleMouseDown);
     canvas.addEventListener("mouseenter", handleMouseEnter);
-    canvas.addEventListener("mousemove", draw);
-    canvas.addEventListener("mouseleave", draw);
-    document.addEventListener("mouseup", stopDrawing);
+    canvas.addEventListener("mousemove", handleMouseMove);
+    canvas.addEventListener("mouseleave", handleMouseLeave);
+    document.addEventListener("mouseup", handleMouseUp);
 }
 
-function createElement(x1: number, y1: number, x2: number, y2: number): Element | null {
+function createElement(idx: number, x1: number, y1: number, x2: number, y2: number, type: ETool) {
     let element: Drawable | null = null;
 
-    switch (tool) {
-        case ETool.Pencil:
-            break;
+    switch (type) {
         case ETool.Rectangle:
-            element = generator.rectangle(x1, y1, x2-x1, y2-y1);
+            element = generator.rectangle(x1, y1, x2 - x1, y2 - y1, { strokeWidth: 3 });
             break;
         case ETool.Line:
             element = generator.line(x1, y1, x2, y2);
             break;
     }
 
-    return element == null ? 
-        null :
-        {
-            coords1: {x: x1, y: y1},
-            coords2: {x: x2, y: y2},
-            element: element
-        };
+    if (x1 > x2) {
+        [x1, x2] = [x2, x1];
+    }
+    if (y1 > y2) {
+        [y1, y2] = [y2, y1];
+    }
+
+    return {
+        idx: idx,
+        coords1: { x: x1, y: y1 },
+        coords2: { x: x2, y: y2 },
+        element: element,
+        points: null,
+        type: type
+    };
 }
 
-export const updateAction = (value: EAction) => action = value;
+function updateElement(idx: number, x1: number, y1: number, x2: number, y2: number) {
+    elements[idx] = createElement(idx, x1, y1, x2, y2, elements[idx].type);
+}
 
-export const updateTool = (value: ETool) => tool = value;
+function getElementAtPosition(x: number, y: number) {
+    // The last element will have the highest priority
+    return elements.findLast((element: Element) => {
+        if (withinElement(x, y, element)) {
+            return true;
+        }
+    });
+}
+
+function withinElement(x: number, y: number, element: Element) {
+    switch (element.type) {
+        case ETool.Rectangle:
+            return x >= element.coords1.x && 
+                   x <= element.coords2.x && 
+                   y >= element.coords1.y && 
+                   y <= element.coords2.y;
+        case ETool.Line:
+            return Math.abs(offset(element.coords1, element.coords2, { x: x, y: y })) < 1;
+    }
+
+    return false;
+}
+
+const distance = (a: Coordinates, b: Coordinates) => Math.sqrt(Math.pow(a.x - b.x, 2) + Math.pow(a.y - b.y, 2));
+
+const offset = (a: Coordinates, b: Coordinates, c: Coordinates) => distance(a, b) - (distance(a, c) + distance(b, c));
+
+const average = (a: number, b: number) => (a + b) / 2
+
+function getSvgPathFromStroke(points: number[][], closed = true) {
+    const len = points.length;
+    if (len < 4) {
+        return ``;
+    }
+
+    let a = points[0];
+    let b = points[1];
+    const c = points[2];
+
+    let result = `M${a[0].toFixed(2)},${a[1].toFixed(2)} Q${b[0].toFixed(2)},${b[1].toFixed(2)} ${average(b[0], c[0]).toFixed(2)},${average(b[1], c[1]).toFixed(2)} T`;
+
+    for (let i = 2, max = len - 1; i < max; i++) {
+        a = points[i];
+        b = points[i + 1];
+        result += `${average(a[0], b[0]).toFixed(2)},${average(a[1], b[1]).toFixed(2)} `;
+    }
+
+    if (closed) {
+        result += 'Z';
+    }
+
+    return result;
+}

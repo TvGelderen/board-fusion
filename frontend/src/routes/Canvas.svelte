@@ -15,8 +15,8 @@
         <h2 class="text-3xl ml-2">Board Fusion</h2>
     </div>
     <div class="flex gap-2">
-        <IconButton icon="material-symbols-light:drag-pan" onclick={() => updateAction(EAction.Drag)} />
-        <IconButton icon="mdi:pencil" onclick={() => updateTool(ETool.Pencil)} />
+        <IconButton icon="mdi:cursor-default-outline" onclick={() => updateAction(EAction.Drag)} />
+        <IconButton icon="mdi:pencil-outline" onclick={() => updateTool(ETool.Pencil)} />
         <IconButton icon="mdi:crop-square" onclick={() => updateTool(ETool.Rectangle)} />
         <IconButton icon="mdi:vector-line" onclick={() => updateTool(ETool.Line)} />
     </div>
