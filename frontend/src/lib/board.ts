@@ -103,11 +103,10 @@ export function initializeBoard() {
     const handleMouseUp = () => {
         if (action === EAction.Drag) {
             if (resizing) {
-                resizing = false;
-                resizeCorner = null;
+                stopResizing();
+                return
             }
             stopDragging();
-            canvas.style.cursor = "default";
             return;
         }
         stopDrawing();
@@ -210,10 +209,28 @@ export function initializeBoard() {
     };
 
     const stopDragging = () => {
-        if (!dragging) return;
-
         selectedElement = null;
         dragging = false;
+        canvas.style.cursor = "default";
+    }
+
+    const stopResizing = () => {
+        if (selectedElement) {
+            const element = elements[selectedElement.idx];
+            if (element.coords1.x > element.coords2.x) {
+                [element.coords1.x, element.coords2.x] = [element.coords2.x, element.coords1.x];
+            }
+            if (element.coords1.y > element.coords2.y) {
+                [element.coords1.y, element.coords2.y] = [element.coords2.y, element.coords1.y];
+            }
+
+            selectedElement = null;
+        }
+
+        resizing = false;
+        resizeCorner = null;
+
+        canvas.style.cursor = "default";
     }
 
     const draw = (e: MouseEvent) => {
@@ -258,23 +275,37 @@ export function initializeBoard() {
     const resize = (e: MouseEvent) => {
         if (!resizing || !selectedElement) return;
 
+        const element = elements[selectedElement.idx];
+
         if (selectedElement.type === ETool.Rectangle) {
             switch (resizeCorner) {
                 case ECorner.TopLeft:
+                    updateElement(selectedElement.idx, e.offsetX, e.offsetY, element.coords2.x, element.coords2.y);
+                    break;
                 case ECorner.BottomRight:
+                    updateElement(selectedElement.idx, element.coords1.x, element.coords1.y, e.offsetX, e.offsetY);
                     break;
                 case ECorner.TopMiddle:
+                    updateElement(selectedElement.idx, element.coords1.x, e.offsetY, element.coords2.x, element.coords2.y);
+                    break;
                 case ECorner.BottomMiddle:
+                    updateElement(selectedElement.idx, element.coords1.x, element.coords1.y, element.coords2.x, e.offsetY);
                     break;
                 case ECorner.TopRight:
+                    updateElement(selectedElement.idx, element.coords1.x, e.offsetY, e.offsetX, element.coords2.y);
+                    break;
                 case ECorner.BottomLeft:
+                    updateElement(selectedElement.idx, e.offsetX, element.coords1.y, element.coords2.x, e.offsetY);
                     break;
                 case ECorner.MiddleRight:
+                    updateElement(selectedElement.idx, element.coords1.x, element.coords1.y, e.offsetX, element.coords2.y);
+                    break;
                 case ECorner.MiddleLeft:
+                    updateElement(selectedElement.idx, e.offsetX, element.coords1.y, element.coords2.x, element.coords2.y);
                     break;
             }
         } else if (selectedElement.type === ETool.Line) {
-            if (Math.abs(distance(elements[selectedElement.idx].coords1, { x: e.offsetX, y: e.offsetY })) < 
+            if (Math.abs(distance(elements[selectedElement.idx].coords1, { x: e.offsetX, y: e.offsetY })) <
                 Math.abs(distance(elements[selectedElement.idx].coords2, { x: e.offsetX, y: e.offsetY }))) {
                 updateElement(selectedElement.idx, e.offsetX, e.offsetY, selectedElement.coords2.x, selectedElement.coords2.y);
             } else {
@@ -328,11 +359,13 @@ function createElement(idx: number, x1: number, y1: number, x2: number, y2: numb
             break;
         case ETool.Rectangle:
             element = generator.rectangle(x1, y1, x2 - x1, y2 - y1, { strokeWidth });
-            if (x1 > x2) {
-                [x1, x2] = [x2, x1];
-            }
-            if (y1 > y2) {
-                [y1, y2] = [y2, y1];
+            if (!resizing) {
+                if (x1 > x2) {
+                    [x1, x2] = [x2, x1];
+                }
+                if (y1 > y2) {
+                    [y1, y2] = [y2, y1];
+                }
             }
             break;
         case ETool.Circle:
@@ -350,9 +383,6 @@ function createElement(idx: number, x1: number, y1: number, x2: number, y2: numb
     };
 }
 
-function resizeElement(idx: number, corner: ECorner) {
-}
-
 function updateElement(idx: number, x1: number, y1: number, x2: number, y2: number) {
     elements[idx] = createElement(idx, x1, y1, x2, y2, elements[idx].type);
     updateSelectedElementBox();
@@ -367,10 +397,17 @@ function updateSelectedElementBox() {
     let box: Element | null = null;
 
     if (selectedElement.type === ETool.Rectangle) {
-        const x1 = coords1.x - selectedBoxPadding;
-        const y1 = coords1.y - selectedBoxPadding;
-        const x2 = coords2.x + selectedBoxPadding;
-        const y2 = coords2.y + selectedBoxPadding;
+        let [x1, y1, x2, y2] = [coords1.x, coords1.y, coords2.x, coords2.y];
+        if (x1 > x2) {
+            [x1, x2] = [x2, x1];
+        }
+        if (y1 > y2) {
+            [y1, y2] = [y2, y1];
+        }
+        x1 -= selectedBoxPadding;
+        y1 -= selectedBoxPadding;
+        x2 += selectedBoxPadding;
+        y2 += selectedBoxPadding;
         corners = [{ x: x1, y: y1 }, { x: average(x1, x2), y: y1 }, { x: x2, y: y1 }, { x: x2, y: average(y1, y2) }, { x: x2, y: y2 }, { x: average(x1, x2), y: y2 }, { x: x1, y: y2 }, { x: x1, y: average(y1, y2) }];
         box = createElement(elements.length, x1, y1, x2, y2, ETool.Rectangle, 1);
     } else if (selectedElement.type === ETool.Line) {
