@@ -68,7 +68,10 @@ export const updateTool = (value: ETool) => {
     tool = value;
 };
 
-export function initializeBoard() {
+export function initializeBoard(initAction: EAction = EAction.Draw, initTool: ETool.Pencil) {
+    action = initAction;
+    tool = initTool;
+
     const canvas = document.querySelector("canvas");
     if (!canvas) return;
 
@@ -217,11 +220,13 @@ export function initializeBoard() {
     const stopResizing = () => {
         if (selectedElement) {
             const element = elements[selectedElement.idx];
-            if (element.coords1.x > element.coords2.x) {
-                [element.coords1.x, element.coords2.x] = [element.coords2.x, element.coords1.x];
-            }
-            if (element.coords1.y > element.coords2.y) {
-                [element.coords1.y, element.coords2.y] = [element.coords2.y, element.coords1.y];
+            if (selectedElement.type === ETool.Rectangle) {
+                if (element.coords1.x > element.coords2.x) {
+                    [element.coords1.x, element.coords2.x] = [element.coords2.x, element.coords1.x];
+                }
+                if (element.coords1.y > element.coords2.y) {
+                    [element.coords1.y, element.coords2.y] = [element.coords2.y, element.coords1.y];
+                }
             }
 
             selectedElement = null;
